@@ -1,0 +1,46 @@
+name: Ravenforge public availability
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: 'Simulate an outage to test the GitHub alert'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: public-availability
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Check HTTPS and certificate
+        env:
+          SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
+        shell: python
+        run: |
+          import datetime, os, socket, ssl, subprocess
+          problems = []
+          for path in ('/', '/personvern/', '/avtalevilkar/'):
+              result = subprocess.run(['curl', '--silent', '--show-error', '--fail',
+                  '--connect-timeout', '5', '--max-time', '15', '--output', '/dev/null',
+                  '--write-out', '%{http_code}', 'https://ravenforge.no' + path],
+                  capture_output=True, text=True)
+              if result.returncode or result.stdout != '200':
+                  problems.append('HTTPS unavailable: ' + path)
+          with socket.create_connection(('ravenforge.no', 443), timeout=10) as sock:
+              with ssl.create_default_context().wrap_socket(sock, server_hostname='ravenforge.no') as tls:
+                  expiry = ssl.cert_time_to_seconds(tls.getpeercert()['notAfter'])
+          remaining = (expiry-datetime.datetime.now(datetime.timezone.utc).timestamp())/86400
+          print('Certificate days remaining:', round(remaining, 1))
+          if remaining <= 30:
+              problems.append('Certificate expires within 30 days')
+          if os.environ.get('SIMULATE_FAILURE') == 'true':
+              problems.append('TEST ONLY: simulated outage; no production interruption')
+          for problem in problems:
+              print('::error::' + problem)
+          raise SystemExit(bool(problems))
