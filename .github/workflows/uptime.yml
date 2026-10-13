@@ -21,6 +21,7 @@ jobs:
       - name: Check HTTPS and certificate
         env:
           SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
+          MONITOR_TOKEN: ${{ secrets.RAVENFORGE_MONITOR_TOKEN }}
         shell: python
         run: |
           import datetime, json, os, socket, ssl, urllib.request
@@ -28,7 +29,8 @@ jobs:
           try:
               request = urllib.request.Request(
                   'https://ravenforge-uptime-probe.hbsagen.workers.dev/health',
-                  headers={'User-Agent': 'RavenforgeUptime/1.0'})
+                  headers={'User-Agent': 'RavenforgeUptime/1.0',
+                           'X-Ravenforge-Monitor': os.environ['MONITOR_TOKEN']})
               with urllib.request.urlopen(request, timeout=40) as response:
                   data = json.loads(response.read(16385))
               checked = datetime.datetime.fromisoformat(data['checkedAt'].replace('Z', '+00:00'))
